@@ -1,0 +1,95 @@
+<?php
+session_start();
+include 'db.php';
+
+if (!isset($_SESSION['user_id']) || $_SESSION['role_id'] != 1) {
+    header("Location: login.php");
+    exit();
+}
+
+// Get all campaigns
+$campaign_stmt = $conn->query("SELECT * FROM campaigns");
+$campaigns = $campaign_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Get updates if campaign is selected
+$updates = [];
+if (isset($_GET['campaign_id'])) {
+    $campaign_id = $_GET['campaign_id'];
+    $update_stmt = $conn->prepare("SELECT * FROM campaign_updates WHERE campaign_id = :campaign_id ORDER BY update_date DESC");
+    $update_stmt->bindParam(':campaign_id', $campaign_id);
+    $update_stmt->execute();
+    $updates = $update_stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $campaign_id = $_POST['campaign_id'];
+    $update_text = $_POST['update_text'];
+    
+    try {
+        $stmt = $conn->prepare("INSERT INTO campaign_updates (campaign_id, update_text) 
+                               VALUES (:campaign_id, :update_text)");
+        $stmt->bindParam(':campaign_id', $campaign_id);
+        $stmt->bindParam(':update_text', $update_text);
+        $stmt->execute();
+        
+        $success = "Update added successfully!";
+        // Refresh updates
+        $update_stmt->execute();
+        $updates = $update_stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        $error = "Error: " . $e->getMessage();
+    }
+}
+?>
+
+<?php include 'header.php'; ?>
+
+<div class="container">
+    <h2>Campaign Updates</h2>
+    <?php if(isset($success)): ?>
+        <div class="success"><?= $success ?></div>
+    <?php endif; ?>
+    <?php if(isset($error)): ?>
+        <div class="alert"><?= $error ?></div>
+    <?php endif; ?>
+    
+    <div class="form-group">
+        <label for="campaign_id">Select Campaign:</label>
+        <select id="campaign_select" onchange="location = this.value;">
+            <option value="">-- Select Campaign --</option>
+            <?php foreach($campaigns as $campaign): ?>
+                <option value="campaign_updates.php?campaign_id=<?= $campaign['campaign_id'] ?>" 
+                    <?= isset($_GET['campaign_id']) && $_GET['campaign_id'] == $campaign['campaign_id'] ? 'selected' : '' ?>>
+                    <?= $campaign['title'] ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+    
+    <?php if(isset($_GET['campaign_id'])): ?>
+        <h3>Add New Update</h3>
+        <form method="POST">
+            <input type="hidden" name="campaign_id" value="<?= $_GET['campaign_id'] ?>">
+            <div class="form-group">
+                <textarea name="update_text" rows="4" required placeholder="Enter update details..."></textarea>
+            </div>
+            <button type="submit" class="btn">Add Update</button>
+        </form>
+        
+        <h3>Previous Updates</h3>
+        <?php if(count($updates) > 0): ?>
+            <div class="updates-list">
+                <?php foreach($updates as $update): ?>
+                    <div class="update-card">
+                        <p><?= nl2br(htmlspecialchars($update['update_text'])) ?></p>
+                        <small><?= date('M d, Y h:i A', strtotime($update['update_date'])) ?></small>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php else: ?>
+            <p>No updates yet for this campaign.</p>
+        <?php endif; ?>
+    <?php endif; ?>
+</div>
+
+<?php include 'footer.php'; ?>
